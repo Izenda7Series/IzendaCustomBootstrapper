@@ -6,13 +6,13 @@
 ## Overview
 A custom bootstrapper allows you to modify requests and responses to the Izenda API. 
 
-## A Few Uses cases
+## A Few Uses Cases
 1. Filtering down a large list of tenants based on some custom criteria.
 2. Removing items from filter field data.
 
 Currently, this repo only shows how to remove items from filter field data.
 
-## Required references:
+## Required References:
 
 1. Izenda.BI.API.dll  
 2. Izenda.BI.Framework.dll 
