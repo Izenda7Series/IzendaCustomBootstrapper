@@ -171,7 +171,7 @@ namespace IzendaCustomBootstrapper
         }
 
         /// <summary>
-        /// Modifies the response from the 'tenant/activeTenants' endpoint to remove some active tenants
+        /// Modifies the response from the 'tenant/activeTenants' endpoint
         /// </summary>
         /// <param name="ctx">The nancy context.</param>
         private void LoadActiveTenantsData(NancyContext ctx)
@@ -179,7 +179,8 @@ namespace IzendaCustomBootstrapper
             if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/tenant/activeTenants"))
                 return;
 
-            var tenantIdsToRemove = "EFGHIJKLMNOPQRSTUVWXYZ".Select(f => f.ToString());
+            // List of tenant ids to keep from response
+            var tenantIdsToKeep = new List<string> { "A", "B" };
 
             List<Tenants> tenants;
 
@@ -195,10 +196,8 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    foreach (var id in tenantIdsToRemove)
-                    {
-                        tenants.RemoveAll(t => t.TenantID == id);
-                    }
+                    // Filter the list of tenants to only those starting with 'A' or 'B'
+                    tenants.RemoveAll(t => !tenantIdsToKeep.Any(i => t.TenantID.StartsWith(i)));
 
                     var json = JsonConvert.SerializeObject(tenants, _serializer);
 
