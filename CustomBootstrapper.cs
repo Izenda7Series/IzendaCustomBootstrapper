@@ -1,4 +1,5 @@
 ﻿using Izenda.BI.API.Bootstrappers;
+using Izenda.BI.Framework.Models;
 using Izenda.BI.Framework.Models.Common;
 using Izenda.BI.Framework.Models.Paging;
 using Nancy;
@@ -7,6 +8,7 @@ using Nancy.TinyIoc;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace IzendaCustomBootstrapper
@@ -17,7 +19,8 @@ namespace IzendaCustomBootstrapper
 
         private JsonSerializerSettings _serializer;
 
-        public CustomBootstrapper() :base()
+        public CustomBootstrapper() 
+            : base()
         {
             _serializer = new JsonSerializerSettings
             {
@@ -38,6 +41,8 @@ namespace IzendaCustomBootstrapper
                 // 'report/loadFilterFieldData' endpoint
                 LoadFilterFieldData(ctx);
 
+                // 'tenants/activeTenants' endpoint
+                LoadActiveTenantsData(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
@@ -158,6 +163,44 @@ namespace IzendaCustomBootstrapper
                     }
 
                     var json = JsonConvert.SerializeObject(result, _serializer);
+
+                    writer.Write(json);
+                    writer.Flush();
+                }
+            };
+        }
+
+        /// <summary>
+        /// Modifies the response from the 'tenant/activeTenants' endpoint
+        /// </summary>
+        /// <param name="ctx">The nancy context.</param>
+        private void LoadActiveTenantsData(NancyContext ctx)
+        {
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/tenant/activeTenants"))
+                return;
+
+            // List of tenant ids to keep from response
+            var tenantIdsToKeep = new List<string> { "A", "B" };
+
+            List<Tenants> tenants;
+
+            using (var memory = new MemoryStream())
+            {
+                ctx.Response.Contents.Invoke(memory);
+
+                var json = Encoding.UTF8.GetString(memory.ToArray());
+                tenants = JsonConvert.DeserializeObject<List<Tenants>>(json);
+            }
+
+            #warning If this list does not contain tenants, the 'tenant/activeTenants' endpoint will throw a null error.
+            ctx.Response.Contents = stream =>
+            {
+                using (var writer = new StreamWriter(stream))
+                {
+                    // Filter the list of tenants to only those starting with 'A' or 'B'
+                    tenants.RemoveAll(t => !tenantIdsToKeep.Any(i => t.TenantID.StartsWith(i)));
+
+                    var json = JsonConvert.SerializeObject(tenants, _serializer);
 
                     writer.Write(json);
                     writer.Flush();
