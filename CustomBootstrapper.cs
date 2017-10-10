@@ -192,6 +192,7 @@ namespace IzendaCustomBootstrapper
                 tenants = JsonConvert.DeserializeObject<List<Tenants>>(json);
             }
 
+            #warning If this list does not contain tenants, the 'tenant/activeTenants' endpoint will throw a null error.
             ctx.Response.Contents = stream =>
             {
                 using (var writer = new StreamWriter(stream))
