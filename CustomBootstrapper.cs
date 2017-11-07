@@ -5,6 +5,7 @@ using Izenda.BI.Framework.Models.Paging;
 using Nancy;
 using Nancy.Bootstrapper;
 using Nancy.TinyIoc;
+using IzendaCustomBootstrapper.Caching;
 using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
@@ -30,6 +31,9 @@ namespace IzendaCustomBootstrapper
 
         protected override void RequestStartup(TinyIoCContainer container, IPipelines pipelines, NancyContext context)
         {
+            pipelines.BeforeRequest += CacheProvider.CheckCache;
+            pipelines.AfterRequest += CacheProvider.SetCache;
+
             pipelines.AfterRequest.AddItemToEndOfPipeline(ctx =>
             {
                 // 'report/loadPartialFilterFieldData' endpoint
@@ -42,7 +46,7 @@ namespace IzendaCustomBootstrapper
                 LoadFilterFieldData(ctx);
 
                 // 'tenants/activeTenants' endpoint
-                LoadActiveTenantsData(ctx);
+                // LoadActiveTenantsData(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
