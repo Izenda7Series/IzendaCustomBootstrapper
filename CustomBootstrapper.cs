@@ -1,11 +1,10 @@
 ﻿using Izenda.BI.API.Bootstrappers;
-using Izenda.BI.Framework.Models;
-using Izenda.BI.Framework.Models.Common;
-using Izenda.BI.Framework.Models.Paging;
+using Izenda.BI.API.Results;
 using Nancy;
 using Nancy.Bootstrapper;
 using Nancy.TinyIoc;
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -32,175 +31,89 @@ namespace IzendaCustomBootstrapper
         {
             pipelines.AfterRequest.AddItemToEndOfPipeline(ctx =>
             {
-                // 'report/loadPartialFilterFieldData' endpoint
-                LoadPartialFilterFieldData(ctx);
+                ModifyLoadSchemaEndpoint(ctx);
 
-                // 'report/loadFilterDataAsTree' endpoint
-                LoadFilterDataAsTree(ctx);
-
-                // 'report/loadFilterFieldData' endpoint
-                LoadFilterFieldData(ctx);
-
-                // 'tenants/activeTenants' endpoint
-                LoadActiveTenantsData(ctx);
+                ModifyConnectionDetailEndpoint(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
         }
 
         /// <summary>
-        /// Modifies the reponse of the 'report/loadPartialFilterFieldData' endpoint
-        /// </summary>
-        /// <param name="ctx">the context</param>
-        private void LoadPartialFilterFieldData(NancyContext ctx)
-        {
-            //monitor requests for this route that returns a list of tenants for the tenant drop-down
-            if (ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadPartialFilterFieldData"))
-            {
-                var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-                var currentFilterValues = new List<string>();
-
-                PagedResult<List<string>> result;
-
-                using (var memory = new MemoryStream())
-                {
-                    ctx.Response.Contents.Invoke(memory);
-
-                    var json = Encoding.UTF8.GetString(memory.ToArray());
-                    result = JsonConvert.DeserializeObject<PagedResult<List<string>>>(json);
-
-                    currentFilterValues = result.Result;
-                }
-
-                ctx.Response.Contents = stream =>
-                {
-                    using (var writer = new StreamWriter(stream))
-                    {
-                        foreach (var item in itemsToRemove)
-                        {
-                            result.Result.Remove(item);
-                            result.Total -= 1;
-                        }
-
-                        var json = JsonConvert.SerializeObject(result, _serializer);
-
-                        writer.Write(json);
-                        writer.Flush();
-                    }
-                };
-            }
-        }
-
-        /// <summary>
-        /// Modifies the reponse of the 'report/loadFilterFieldData' endpoint
-        /// </summary>
-        /// <param name="ctx">the context</param>
-        private void LoadFilterFieldData(NancyContext ctx)
-        {
-            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadFilterFieldData"))
-                return;
-
-            var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-            var currentFilterValues = new List<string>();
-
-            List<string> result;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                result = JsonConvert.DeserializeObject<List<string>>(json);
-
-                currentFilterValues = result;
-            }
-
-            ctx.Response.Contents = stream =>
-            {
-                using (var writer = new StreamWriter(stream))
-                {
-                    foreach (var item in itemsToRemove)
-                    {
-                        result.Remove(item);
-                    }
-
-                    var json = JsonConvert.SerializeObject(result, _serializer);
-
-                    writer.Write(json);
-                    writer.Flush();
-                }
-            };
-        }
-
-        /// <summary>
-        /// Modifies the reponse of the 'report/loadFilterDataAsTree' endpoint
-        /// </summary>
-        /// <param name="ctx">the context</param>
-        private void LoadFilterDataAsTree(NancyContext ctx)
-        {
-            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadFilterDataAsTree"))
-                return;
-
-            var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-
-            List<ValueTreeNode> result;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                result = JsonConvert.DeserializeObject<List<ValueTreeNode>>(json);
-            }
-
-            ctx.Response.Contents = stream =>
-            {
-                using (var writer = new StreamWriter(stream))
-                {
-                    foreach (var item in itemsToRemove)
-                    {
-                        result.RemoveAll(x => x.Text == item);
-                    }
-
-                    var json = JsonConvert.SerializeObject(result, _serializer);
-
-                    writer.Write(json);
-                    writer.Flush();
-                }
-            };
-        }
-
-        /// <summary>
-        /// Modifies the response from the 'tenant/activeTenants' endpoint
+        /// Modifies the response from the 'connection/reloadRemoteSchema' endpoint
         /// </summary>
         /// <param name="ctx">The nancy context.</param>
-        private void LoadActiveTenantsData(NancyContext ctx)
+        private void ModifyLoadSchemaEndpoint(NancyContext ctx)
         {
-            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/tenant/activeTenants"))
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/connection/reloadRemoteSchema"))
                 return;
 
-            // List of tenant ids to keep from response
-            var tenantIdsToKeep = new List<string> { "A", "B" };
+            // List of schemas to keep from response
+            const string schemaToKeep = "TEST2";
 
-            List<Tenants> tenants;
+            SchemaResult schemas;
 
             using (var memory = new MemoryStream())
             {
                 ctx.Response.Contents.Invoke(memory);
 
                 var json = Encoding.UTF8.GetString(memory.ToArray());
-                tenants = JsonConvert.DeserializeObject<List<Tenants>>(json);
+                schemas = JsonConvert.DeserializeObject<SchemaResult>(json);
             }
 
-            #warning If this list does not contain tenants, the 'tenant/activeTenants' endpoint will throw a null error.
             ctx.Response.Contents = stream =>
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    // Filter the list of tenants to only those starting with 'A' or 'B'
-                    tenants.RemoveAll(t => !tenantIdsToKeep.Any(i => t.TenantID.StartsWith(i)));
+                    foreach (var db in schemas.DBSource.QuerySources)
+                    {
+                        foreach (var source in db.QuerySources)
+                        {
+                            foreach (var field in source.QuerySourceFields)
+                            {
+                                field.Id = Guid.Empty;
+                            }
+                        }
+                    }
+                    // schemas.DBSource.QuerySources.RemoveAll(t => t.Name != schemaToKeep);
 
-                    var json = JsonConvert.SerializeObject(tenants, _serializer);
+                    var json = JsonConvert.SerializeObject(schemas, _serializer);
+
+                    writer.Write(json);
+                    writer.Flush();
+                }
+            };
+        }
+
+        /// <summary>
+        /// Modifies the response from the 'connection/detail' endpoint
+        /// </summary>
+        /// <param name="ctx">The nancy context.</param>
+        private void ModifyConnectionDetailEndpoint(NancyContext ctx)
+        {
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/connection/detail"))
+                return;
+
+            // List of schemas to keep from response
+            const string schemaToKeep = "TEST2";
+
+            ConnectionResult connectionResult;
+
+            using (var memory = new MemoryStream())
+            {
+                ctx.Response.Contents.Invoke(memory);
+
+                var json = Encoding.UTF8.GetString(memory.ToArray());
+                connectionResult = JsonConvert.DeserializeObject<ConnectionResult>(json);
+            }
+
+            ctx.Response.Contents = stream =>
+            {
+                using (var writer = new StreamWriter(stream))
+                {
+                    connectionResult.Connection.DBSource.QuerySources.RemoveAll(t => t.Name != schemaToKeep);
+
+                    var json = JsonConvert.SerializeObject(connectionResult, _serializer);
 
                     writer.Write(json);
                     writer.Flush();
