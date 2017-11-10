@@ -1,5 +1,7 @@
 ﻿using Izenda.BI.API.Bootstrappers;
+using Izenda.BI.Framework.Models;
 using Izenda.BI.Framework.Models.Contexts;
+using Izenda.BI.Framework.Models.Paging;
 using IzendaCustomBootstrapper.Models;
 using Nancy;
 using Nancy.Bootstrapper;
@@ -31,18 +33,19 @@ namespace IzendaCustomBootstrapper
         {
             pipelines.AfterRequest.AddItemToEndOfPipeline(ctx =>
             {
-                // Modifies the response from the 'report/allcategories' & 'report/list2' endpoints
-                ModifyCategoryNameBasedOnTenant(ctx);
+                // Modifies the response from the neccessary category endpoints
+                ModifyReportListCategories(ctx);
+                ModifyRolesAvailableCategories(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
         }
 
         /// <summary>
-        /// Modifies the reponse from 'report/allcategories' & 'report/list2' endpoints to update a category's name
+        /// Modifies the reponse from 'report/allcategories' & 'report/list2' endpoints to update a category's name based on tenant
         /// </summary>
         /// <param name="ctx">The nancy context</param>
-        private void ModifyCategoryNameBasedOnTenant(NancyContext ctx)
+        private void ModifyReportListCategories(NancyContext ctx)
         {
             if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/allcategories") && !ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/list2"))
             {
@@ -67,14 +70,62 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
+                    #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
                     if (currentUser?.CurrentTenant?.TenantID == tenantId && list.Data.Any())
                     {
-                        #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
-
-                        list.Data.FirstOrDefault(d => d.IsGlobal).SubCategories.FirstOrDefault(s => s.Name.Contains(catNameToChange)).Name = updatedCatName;
+                        var subCategories = list.Data.FirstOrDefault(d => d.IsGlobal).SubCategories;
+                        foreach (var cat in subCategories.Where(s => s.Name.Contains(catNameToChange)))
+                        {
+                            cat.Name = updatedCatName;
+                        }
                     }
 
                     var json = JsonConvert.SerializeObject(list, _serializer);
+
+                    writer.Write(json);
+                    writer.Flush();
+                }
+            };
+        }
+
+        /// <summary>
+        /// Modifies the reponse of the 'report/availableCategory' endpoint to update a category's name based on tenant
+        /// </summary>
+        /// <param name="ctx">the context</param>
+        private void ModifyRolesAvailableCategories(NancyContext ctx)
+        {
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/role/availableCategory"))
+                return;
+
+            const string tenantId = "DELDG";
+            const string catNameToChange = "Global Cat";
+            const string updatedCatName = "Custom Alias Cat";
+            var currentUser = UserContext.Current;
+            PagedResult<List<Category>> categoryResult;
+
+            using (var memory = new MemoryStream())
+            {
+                ctx.Response.Contents.Invoke(memory);
+
+                var json = Encoding.UTF8.GetString(memory.ToArray());
+                categoryResult = JsonConvert.DeserializeObject<PagedResult<List<Category>>>(json);
+            }
+
+            ctx.Response.Contents = stream =>
+            {
+                using (var writer = new StreamWriter(stream))
+                {
+                    #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
+                    if (currentUser?.CurrentTenant?.TenantID == tenantId && categoryResult.Result.Any())
+                    {
+                        var subCategories = categoryResult.Result.FirstOrDefault(d => d.IsGlobal).SubCategories;
+                        foreach (var cat in subCategories.Where(s => s.Name.Contains(catNameToChange)))
+                        {
+                            cat.Name = updatedCatName;
+                        }
+                    }
+
+                    var json = JsonConvert.SerializeObject(categoryResult, _serializer);
 
                     writer.Write(json);
                     writer.Flush();
