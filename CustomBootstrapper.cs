@@ -1,7 +1,6 @@
 ﻿using Izenda.BI.API.Bootstrappers;
-using Izenda.BI.Framework.Models;
-using Izenda.BI.Framework.Models.Common;
-using Izenda.BI.Framework.Models.Paging;
+using Izenda.BI.Framework.Models.Contexts;
+using IzendaCustomBootstrapper.Models;
 using Nancy;
 using Nancy.Bootstrapper;
 using Nancy.TinyIoc;
@@ -32,63 +31,55 @@ namespace IzendaCustomBootstrapper
         {
             pipelines.AfterRequest.AddItemToEndOfPipeline(ctx =>
             {
-                // 'report/loadPartialFilterFieldData' endpoint
-                LoadPartialFilterFieldData(ctx);
-
-                // 'report/loadFilterDataAsTree' endpoint
-                LoadFilterDataAsTree(ctx);
-
-                // 'report/loadFilterFieldData' endpoint
-                LoadFilterFieldData(ctx);
-
-                // 'tenants/activeTenants' endpoint
-                LoadActiveTenantsData(ctx);
+                // Modifies the response from the 'report/allcategories' & 'report/list2' endpoints
+                ModifyCategoryNameBasedOnTenant(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
         }
 
         /// <summary>
-        /// Modifies the reponse of the 'report/loadPartialFilterFieldData' endpoint
+        /// Modifies the reponse from 'report/allcategories' & 'report/list2' endpoints to update a category's name
         /// </summary>
-        /// <param name="ctx">the context</param>
-        private void LoadPartialFilterFieldData(NancyContext ctx)
+        /// <param name="ctx">The nancy context</param>
+        private void ModifyCategoryNameBasedOnTenant(NancyContext ctx)
         {
-            //monitor requests for this route that returns a list of tenants for the tenant drop-down
-            if (ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadPartialFilterFieldData"))
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/allcategories") && !ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/list2"))
             {
-                var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-                var currentFilterValues = new List<string>();
-
-                PagedResult<List<string>> result;
-
-                using (var memory = new MemoryStream())
-                {
-                    ctx.Response.Contents.Invoke(memory);
-
-                    var json = Encoding.UTF8.GetString(memory.ToArray());
-                    result = JsonConvert.DeserializeObject<PagedResult<List<string>>>(json);
-
-                    currentFilterValues = result.Result;
-                }
-
-                ctx.Response.Contents = stream =>
-                {
-                    using (var writer = new StreamWriter(stream))
-                    {
-                        foreach (var item in itemsToRemove)
-                        {
-                            result.Result.Remove(item);
-                            result.Total -= 1;
-                        }
-
-                        var json = JsonConvert.SerializeObject(result, _serializer);
-
-                        writer.Write(json);
-                        writer.Flush();
-                    }
-                };
+                return;
             }
+
+            const string tenantId = "DELDG";
+            const string catNameToChange = "Global Cat";
+            const string updatedCatName = "Custom Alias Cat";
+            var currentUser = UserContext.Current;
+            ReportList list;
+
+            using (var memory = new MemoryStream())
+            {
+                ctx.Response.Contents.Invoke(memory);
+
+                var json = Encoding.UTF8.GetString(memory.ToArray());
+                list = JsonConvert.DeserializeObject<ReportList>(json);
+            }
+
+            ctx.Response.Contents = stream =>
+            {
+                using (var writer = new StreamWriter(stream))
+                {
+                    if (currentUser?.CurrentTenant?.TenantID == tenantId && list.Data.Any())
+                    {
+                        #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
+
+                        list.Data.FirstOrDefault(d => d.IsGlobal).SubCategories.FirstOrDefault(s => s.Name.Contains(catNameToChange)).Name = updatedCatName;
+                    }
+
+                    var json = JsonConvert.SerializeObject(list, _serializer);
+
+                    writer.Write(json);
+                    writer.Flush();
+                }
+            };
         }
 
         /// <summary>
@@ -125,82 +116,6 @@ namespace IzendaCustomBootstrapper
                     }
 
                     var json = JsonConvert.SerializeObject(result, _serializer);
-
-                    writer.Write(json);
-                    writer.Flush();
-                }
-            };
-        }
-
-        /// <summary>
-        /// Modifies the reponse of the 'report/loadFilterDataAsTree' endpoint
-        /// </summary>
-        /// <param name="ctx">the context</param>
-        private void LoadFilterDataAsTree(NancyContext ctx)
-        {
-            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadFilterDataAsTree"))
-                return;
-
-            var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-
-            List<ValueTreeNode> result;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                result = JsonConvert.DeserializeObject<List<ValueTreeNode>>(json);
-            }
-
-            ctx.Response.Contents = stream =>
-            {
-                using (var writer = new StreamWriter(stream))
-                {
-                    foreach (var item in itemsToRemove)
-                    {
-                        result.RemoveAll(x => x.Text == item);
-                    }
-
-                    var json = JsonConvert.SerializeObject(result, _serializer);
-
-                    writer.Write(json);
-                    writer.Flush();
-                }
-            };
-        }
-
-        /// <summary>
-        /// Modifies the response from the 'tenant/activeTenants' endpoint
-        /// </summary>
-        /// <param name="ctx">The nancy context.</param>
-        private void LoadActiveTenantsData(NancyContext ctx)
-        {
-            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/tenant/activeTenants"))
-                return;
-
-            // List of tenant ids to keep from response
-            var tenantIdsToKeep = new List<string> { "A", "B" };
-
-            List<Tenants> tenants;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                tenants = JsonConvert.DeserializeObject<List<Tenants>>(json);
-            }
-
-            #warning If this list does not contain tenants, the 'tenant/activeTenants' endpoint will throw a null error.
-            ctx.Response.Contents = stream =>
-            {
-                using (var writer = new StreamWriter(stream))
-                {
-                    // Filter the list of tenants to only those starting with 'A' or 'B'
-                    tenants.RemoveAll(t => !tenantIdsToKeep.Any(i => t.TenantID.StartsWith(i)));
-
-                    var json = JsonConvert.SerializeObject(tenants, _serializer);
 
                     writer.Write(json);
                     writer.Flush();
