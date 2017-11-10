@@ -2,7 +2,9 @@
 using Izenda.BI.Framework.Models;
 using Izenda.BI.Framework.Models.Contexts;
 using Izenda.BI.Framework.Models.Paging;
+using Izenda.BI.Framework.Models.ReportDesigner;
 using IzendaCustomBootstrapper.Models;
+using IzendaCustomBootstrapper.Resolvers;
 using Nancy;
 using Nancy.Bootstrapper;
 using Nancy.TinyIoc;
@@ -19,6 +21,7 @@ namespace IzendaCustomBootstrapper
         const string ApiPrefix = "api";
 
         private JsonSerializerSettings _serializer;
+        private JsonSerializerSettings _deserializerSettings;
 
         public CustomBootstrapper() 
             : base()
@@ -27,6 +30,13 @@ namespace IzendaCustomBootstrapper
             {
                 ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
             };
+
+            _deserializerSettings = new JsonSerializerSettings();
+            var resolver = new IzendaSerializerContractResolver();
+            resolver.Ignore(typeof(ReportPartDefinition));
+            resolver.Ignore(typeof(ReportPartContent));
+            _deserializerSettings.ContractResolver = resolver;
+
         }
 
         protected override void RequestStartup(TinyIoCContainer container, IPipelines pipelines, NancyContext context)
@@ -36,6 +46,8 @@ namespace IzendaCustomBootstrapper
                 // Modifies the response from the neccessary category endpoints
                 ModifyReportListCategories(ctx);
                 ModifyRolesAvailableCategories(ctx);
+                ModifyReportAllowedCategories(ctx);
+                //ModifyReportSearchCategories(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
@@ -52,9 +64,6 @@ namespace IzendaCustomBootstrapper
                 return;
             }
 
-            const string tenantId = "DELDG";
-            const string catNameToChange = "Global Cat";
-            const string updatedCatName = "Custom Alias Cat";
             var currentUser = UserContext.Current;
             ReportList list;
 
@@ -70,15 +79,7 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
-                    if (currentUser?.CurrentTenant?.TenantID == tenantId && list.Data.Any())
-                    {
-                        var subCategories = list.Data.FirstOrDefault(d => d.IsGlobal).SubCategories;
-                        foreach (var cat in subCategories.Where(s => s.Name.Contains(catNameToChange)))
-                        {
-                            cat.Name = updatedCatName;
-                        }
-                    }
+                    list.Data = this.UpdateCategoryNamesBasedOnTenant(list.Data, currentUser);
 
                     var json = JsonConvert.SerializeObject(list, _serializer);
 
@@ -89,7 +90,7 @@ namespace IzendaCustomBootstrapper
         }
 
         /// <summary>
-        /// Modifies the reponse of the 'report/availableCategory' endpoint to update a category's name based on tenant
+        /// Modifies the reponse of the 'role/availableCategory' endpoint to update a category's name based on tenant
         /// </summary>
         /// <param name="ctx">the context</param>
         private void ModifyRolesAvailableCategories(NancyContext ctx)
@@ -97,9 +98,6 @@ namespace IzendaCustomBootstrapper
             if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/role/availableCategory"))
                 return;
 
-            const string tenantId = "DELDG";
-            const string catNameToChange = "Global Cat";
-            const string updatedCatName = "Custom Alias Cat";
             var currentUser = UserContext.Current;
             PagedResult<List<Category>> categoryResult;
 
@@ -115,15 +113,7 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
-                    if (currentUser?.CurrentTenant?.TenantID == tenantId && categoryResult.Result.Any())
-                    {
-                        var subCategories = categoryResult.Result.FirstOrDefault(d => d.IsGlobal).SubCategories;
-                        foreach (var cat in subCategories.Where(s => s.Name.Contains(catNameToChange)))
-                        {
-                            cat.Name = updatedCatName;
-                        }
-                    }
+                    categoryResult.Result = this.UpdateCategoryNamesBasedOnTenant(categoryResult.Result, currentUser);
 
                     var json = JsonConvert.SerializeObject(categoryResult, _serializer);
 
@@ -134,44 +124,106 @@ namespace IzendaCustomBootstrapper
         }
 
         /// <summary>
-        /// Modifies the reponse of the 'report/loadFilterFieldData' endpoint
+        /// Modifies the reponse of the 'report/category/0/' endpoint to update a category's name based on tenant
         /// </summary>
         /// <param name="ctx">the context</param>
-        private void LoadFilterFieldData(NancyContext ctx)
+        private void ModifyReportAllowedCategories(NancyContext ctx)
         {
-            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadFilterFieldData"))
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/category/0/"))
                 return;
 
-            var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-            var currentFilterValues = new List<string>();
-
-            List<string> result;
+            var currentUser = UserContext.Current;
+            List<Category> categories;
 
             using (var memory = new MemoryStream())
             {
                 ctx.Response.Contents.Invoke(memory);
 
                 var json = Encoding.UTF8.GetString(memory.ToArray());
-                result = JsonConvert.DeserializeObject<List<string>>(json);
-
-                currentFilterValues = result;
+                categories = JsonConvert.DeserializeObject<List<Category>>(json);
             }
 
             ctx.Response.Contents = stream =>
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    foreach (var item in itemsToRemove)
-                    {
-                        result.Remove(item);
-                    }
+                    // temp hack bc IsGlobal is not coming back true as it should be
+                    categories.Where(c => c.Name == "Global Cat").ToList().ForEach(c => c.IsGlobal = true);
 
-                    var json = JsonConvert.SerializeObject(result, _serializer);
+                    categories = this.UpdateCategoryNamesBasedOnTenant(categories, currentUser);
+
+                    var json = JsonConvert.SerializeObject(categories, _serializer);
 
                     writer.Write(json);
                     writer.Flush();
                 }
             };
+        }
+
+        /// <summary>
+        /// Modifies the reponse of the 'report/advancedSearch' endpoint to update a category's name based on tenant
+        /// </summary>
+        /// <param name="ctx">the context</param>
+        private void ModifyReportSearchCategories(NancyContext ctx)
+        {
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/advancedSearch"))
+                return;
+
+            var currentUser = UserContext.Current;
+            PagedResult<List<ReportDefinition>> reportResult; 
+
+            using (var memory = new MemoryStream())
+            {
+                ctx.Response.Contents.Invoke(memory);
+
+                var json = Encoding.UTF8.GetString(memory.ToArray());
+                reportResult = JsonConvert.DeserializeObject<PagedResult<List<ReportDefinition>>>(json, _deserializerSettings);
+            }
+
+            ctx.Response.Contents = stream =>
+            {
+                using (var writer = new StreamWriter(stream))
+                {
+                    var json = JsonConvert.SerializeObject(reportResult, _serializer);
+
+                    writer.Write(json);
+                    writer.Flush();
+                }
+            };
+        }
+
+        private List<Category> UpdateCategoryNamesBasedOnTenant(List<Category> categories, UserContext currentUser)
+        {
+            const string tenantId = "DELDG";
+            
+            #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
+            if (currentUser?.CurrentTenant?.TenantID == tenantId)
+            {
+                this.UpdateCategoryNamesBasedOnTenant(categories);
+            }
+
+            return categories;
+        }
+
+        private List<Category> UpdateCategoryNamesBasedOnTenant(List<Category> categories)
+        {
+            const string catNameToChange = "Global Cat";
+            const string updatedCatName = "Custom Alias Cat";
+
+            foreach (var cat in categories.Where(s => s.IsGlobal))
+            {
+                if (cat.Name == catNameToChange)
+                {
+                    cat.Name = updatedCatName;
+                }
+
+                if (cat.SubCategories.Any())
+                {
+                    this.UpdateCategoryNamesBasedOnTenant(cat.SubCategories);
+                }
+            }
+
+            return categories;
         }
     }
 }
