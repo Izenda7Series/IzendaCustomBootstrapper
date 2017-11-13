@@ -3,12 +3,13 @@ using Izenda.BI.Framework.Models;
 using Izenda.BI.Framework.Models.Contexts;
 using Izenda.BI.Framework.Models.Paging;
 using Izenda.BI.Framework.Models.ReportDesigner;
+using IzendaCustomBootstrapper.Converters;
 using IzendaCustomBootstrapper.Models;
-using IzendaCustomBootstrapper.Resolvers;
 using Nancy;
 using Nancy.Bootstrapper;
 using Nancy.TinyIoc;
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -19,6 +20,13 @@ namespace IzendaCustomBootstrapper
     public class CustomBootstrapper : IzendaBootstraper
     {
         const string ApiPrefix = "api";
+
+        const string categoryNameToChange = "Global Cat";
+        const string updatedCategoryName = "Custom Alias Cat";
+        const string tenantId = "DELDG";
+
+        // Use this Id to check if parent is the Global Category
+        private readonly Guid GlobalCategoryId = Guid.Parse("2A83E3CE-F91B-4F14-910D-76CADF42D0FE");        
 
         private JsonSerializerSettings _serializer;
         private JsonSerializerSettings _deserializerSettings;
@@ -31,12 +39,8 @@ namespace IzendaCustomBootstrapper
                 ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
             };
 
-            _deserializerSettings = new JsonSerializerSettings();
-            var resolver = new IzendaSerializerContractResolver();
-            resolver.Ignore(typeof(ReportPartDefinition));
-            resolver.Ignore(typeof(ReportPartContent));
-            _deserializerSettings.ContractResolver = resolver;
-
+            // Special settings to deserialize into the ReportPartDefinition object
+            _deserializerSettings = new JsonSerializerSettings { Converters = new List<JsonConverter> { new ReportPartConverter() } };
         }
 
         protected override void RequestStartup(TinyIoCContainer container, IPipelines pipelines, NancyContext context)
@@ -47,7 +51,7 @@ namespace IzendaCustomBootstrapper
                 ModifyReportListCategories(ctx);
                 ModifyRolesAvailableCategories(ctx);
                 ModifyReportAllowedCategories(ctx);
-                //ModifyReportSearchCategories(ctx);
+                ModifyReportSearchCategories(ctx);
             });
 
             base.RequestStartup(container, pipelines, context);
@@ -147,9 +151,6 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    // temp hack bc IsGlobal is not coming back true as it should be
-                    categories.Where(c => c.Name == "Global Cat").ToList().ForEach(c => c.IsGlobal = true);
-
                     categories = this.UpdateCategoryNamesBasedOnTenant(categories, currentUser);
 
                     var json = JsonConvert.SerializeObject(categories, _serializer);
@@ -184,6 +185,14 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
+                    if (currentUser?.CurrentTenant?.TenantID == tenantId)
+                    {
+                        foreach (var result in reportResult.Result.Where(r => r.CategoryName == categoryNameToChange))
+                        {
+                            result.CategoryName = updatedCategoryName;
+                        }
+                    }
+
                     var json = JsonConvert.SerializeObject(reportResult, _serializer);
 
                     writer.Write(json);
@@ -193,10 +202,8 @@ namespace IzendaCustomBootstrapper
         }
 
         private List<Category> UpdateCategoryNamesBasedOnTenant(List<Category> categories, UserContext currentUser)
-        {
-            const string tenantId = "DELDG";
-            
-            #warning Depending on your use case, this may need additonal conditionals to check for a list that does not have all the assumed fields populated.
+        {            
+            #warning Depending on your use case, this may need additonal conditionals
             if (currentUser?.CurrentTenant?.TenantID == tenantId)
             {
                 this.UpdateCategoryNamesBasedOnTenant(categories);
@@ -207,14 +214,11 @@ namespace IzendaCustomBootstrapper
 
         private List<Category> UpdateCategoryNamesBasedOnTenant(List<Category> categories)
         {
-            const string catNameToChange = "Global Cat";
-            const string updatedCatName = "Custom Alias Cat";
-
-            foreach (var cat in categories.Where(s => s.IsGlobal))
+            foreach (var cat in categories)
             {
-                if (cat.Name == catNameToChange)
+                if (cat.Name == categoryNameToChange)
                 {
-                    cat.Name = updatedCatName;
+                    cat.Name = updatedCategoryName;
                 }
 
                 if (cat.SubCategories.Any())
