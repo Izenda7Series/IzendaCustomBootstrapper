@@ -21,9 +21,9 @@ namespace IzendaCustomBootstrapper
     {
         const string ApiPrefix = "api";
 
-        const string categoryNameToChange = "Global Cat";
-        const string updatedCategoryName = "Custom Alias Cat";
-        const string tenantId = "DELDG";
+        const string CategoryNameToChange = "Global Cat";
+        const string UpdatedCategoryName = "Custom Alias Cat";
+        const string TenantId = "DELDG";
 
         // Use this Id to check if parent is the Global Category
         private readonly Guid GlobalCategoryId = Guid.Parse("2A83E3CE-F91B-4F14-910D-76CADF42D0FE");        
@@ -39,7 +39,7 @@ namespace IzendaCustomBootstrapper
                 ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver()
             };
 
-            // Special settings to deserialize into the ReportPartDefinition object
+            // Special settings to deserialize the ReportPartDefinition object
             _deserializerSettings = new JsonSerializerSettings { Converters = new List<JsonConverter> { new ReportPartConverter() } };
         }
 
@@ -185,11 +185,11 @@ namespace IzendaCustomBootstrapper
             {
                 using (var writer = new StreamWriter(stream))
                 {
-                    if (currentUser?.CurrentTenant?.TenantID == tenantId)
+                    if (currentUser?.CurrentTenant?.TenantID == TenantId)
                     {
-                        foreach (var result in reportResult.Result.Where(r => r.CategoryName == categoryNameToChange))
+                        foreach (var result in reportResult.Result.Where(r => r.CategoryName == CategoryNameToChange))
                         {
-                            result.CategoryName = updatedCategoryName;
+                            result.CategoryName = UpdatedCategoryName;
                         }
                     }
 
@@ -203,8 +203,8 @@ namespace IzendaCustomBootstrapper
 
         private List<Category> UpdateCategoryNamesBasedOnTenant(List<Category> categories, UserContext currentUser)
         {            
-            #warning Depending on your use case, this may need additonal conditionals
-            if (currentUser?.CurrentTenant?.TenantID == tenantId)
+            #warning Depending on the use case, this may need additonal conditionals
+            if (currentUser?.CurrentTenant?.TenantID == TenantId)
             {
                 this.UpdateCategoryNamesBasedOnTenant(categories);
             }
@@ -216,9 +216,9 @@ namespace IzendaCustomBootstrapper
         {
             foreach (var cat in categories)
             {
-                if (cat.Name == categoryNameToChange)
+                if (cat.Name == CategoryNameToChange)
                 {
-                    cat.Name = updatedCategoryName;
+                    cat.Name = UpdatedCategoryName;
                 }
 
                 if (cat.SubCategories.Any())

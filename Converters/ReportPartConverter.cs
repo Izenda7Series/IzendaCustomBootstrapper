@@ -55,24 +55,38 @@ namespace IzendaCustomBootstrapper.Converters
     {
         public static int? ParseInt(this JToken value)
         {
-            int parsedInt;
-            if (value != null && int.TryParse(value.ToString(), out parsedInt))
+            try
             {
-                return parsedInt;
-            }
+                int parsedInt;
+                if (value != null && int.TryParse(value.ToString(), out parsedInt))
+                {
+                    return parsedInt;
+                }
 
-            return null;
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public static Guid? ParseGuid(this JToken value)
         {
-            Guid parsedGuid;
-            if (value != null && Guid.TryParse(value.ToString(), out parsedGuid))
+            try
             {
-                return parsedGuid;
-            }
+                Guid parsedGuid;
+                if (value != null && Guid.TryParse(value.ToString(), out parsedGuid))
+                {
+                    return parsedGuid;
+                }
 
-            return null;
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }
