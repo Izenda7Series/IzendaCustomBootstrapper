@@ -43,8 +43,10 @@ namespace Mvc5StarterKit.IzendaBoundary
             if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadPartialDataSourceCategory"))
                 return;
 
-            // DataSource to remove
+            //The data source we want to remove from the list. Replace this with whatever data source(s) you want to hide from the list in the report designer  
             const string sourceToRemove = "Employees";
+
+            //This is a model created to handle the response of this endpoint. It is inside of the Models folder. You will have to create a similar model to handle this information.
             DataSourceCategoryResponse dataSourceCategoryResponse = new DataSourceCategoryResponse();
 
             using (var memory = new MemoryStream())
@@ -64,7 +66,7 @@ namespace Mvc5StarterKit.IzendaBoundary
                         {
                             if (querySource.Name == sourceToRemove)
                             {
-                                //Maybe make a list to remove all after the fact
+                                //Here we remove any data source that matches the name(s) specified above. In this example we remove any data sources named "Employees"
                                 dataSourceCat.QuerySource.Remove(querySource);
                             }
                         }
