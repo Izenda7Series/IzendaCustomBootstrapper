@@ -34,7 +34,10 @@ namespace Mvc5StarterKit.IzendaBoundary
             base.RequestStartup(container, pipelines, context);
         }
 
-
+        /// <summary>
+        /// Modifies the reponse of the 'report/field/dataFormat' endpoint to remove certain options based on unique characters (ex. $)
+        /// </summary>
+        /// <param name="ctx">the context</param>
         private void ModifyDataFormatEndpoint(NancyContext ctx)
         {
             if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/field/dataFormat/"))
