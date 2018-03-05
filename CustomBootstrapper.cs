@@ -10,7 +10,7 @@ using System.Text;
 using Izenda.BI.API.Helper;
 using Izenda.BI.Framework.Models;
 
-namespace Mvc5StarterKit.IzendaBoundary
+namespace IzendaCustomBootstrapper
 {
     public class CustomBootstrapper : IzendaBootstraper
     {
