@@ -2,6 +2,7 @@
 using Izenda.BI.Framework.Models;
 using Izenda.BI.Framework.Models.Common;
 using Izenda.BI.Framework.Models.Paging;
+using IzendaCustomBootstrapper.Extensions;
 using Nancy;
 using Nancy.Bootstrapper;
 using Nancy.TinyIoc;
@@ -9,7 +10,6 @@ using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace IzendaCustomBootstrapper
 {
@@ -55,40 +55,28 @@ namespace IzendaCustomBootstrapper
         private void LoadPartialFilterFieldData(NancyContext ctx)
         {
             //monitor requests for this route that returns a list of tenants for the tenant drop-down
-            if (ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadPartialFilterFieldData"))
+            if (!ctx.Request.Url.Path.Contains($"/{ApiPrefix}/report/loadPartialFilterFieldData"))
+                return;
+
+            var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
+            var result = this.BindResponse<PagedResult<List<string>>>(ctx);
+
+            ctx.Response.Contents = stream =>
             {
-                var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-                var currentFilterValues = new List<string>();
-
-                PagedResult<List<string>> result;
-
-                using (var memory = new MemoryStream())
+                using (var writer = new StreamWriter(stream))
                 {
-                    ctx.Response.Contents.Invoke(memory);
-
-                    var json = Encoding.UTF8.GetString(memory.ToArray());
-                    result = JsonConvert.DeserializeObject<PagedResult<List<string>>>(json);
-
-                    currentFilterValues = result.Result;
-                }
-
-                ctx.Response.Contents = stream =>
-                {
-                    using (var writer = new StreamWriter(stream))
+                    foreach (var item in itemsToRemove)
                     {
-                        foreach (var item in itemsToRemove)
-                        {
-                            result.Result.Remove(item);
-                            result.Total -= 1;
-                        }
-
-                        var json = JsonConvert.SerializeObject(result, _serializer);
-
-                        writer.Write(json);
-                        writer.Flush();
+                        result.Result.Remove(item);
+                        result.Total -= 1;
                     }
-                };
-            }
+
+                    var json = JsonConvert.SerializeObject(result, _serializer);
+
+                    writer.Write(json);
+                    writer.Flush();
+                }
+            };
         }
 
         /// <summary>
@@ -101,19 +89,7 @@ namespace IzendaCustomBootstrapper
                 return;
 
             var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-            var currentFilterValues = new List<string>();
-
-            List<string> result;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                result = JsonConvert.DeserializeObject<List<string>>(json);
-
-                currentFilterValues = result;
-            }
+            var result = this.BindResponse<List<string>>(ctx);
 
             ctx.Response.Contents = stream =>
             {
@@ -142,16 +118,7 @@ namespace IzendaCustomBootstrapper
                 return;
 
             var itemsToRemove = new List<string> { "[NULL]", "[BLANK]" };
-
-            List<ValueTreeNode> result;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                result = JsonConvert.DeserializeObject<List<ValueTreeNode>>(json);
-            }
+            var result = this.BindResponse<List<ValueTreeNode>>(ctx);
 
             ctx.Response.Contents = stream =>
             {
@@ -180,17 +147,8 @@ namespace IzendaCustomBootstrapper
                 return;
 
             // List of tenant ids to keep from response
-            var tenantIdsToKeep = new List<string> { "A", "B" };
-
-            List<Tenants> tenants;
-
-            using (var memory = new MemoryStream())
-            {
-                ctx.Response.Contents.Invoke(memory);
-
-                var json = Encoding.UTF8.GetString(memory.ToArray());
-                tenants = JsonConvert.DeserializeObject<List<Tenants>>(json);
-            }
+            var tenantIdsToKeep = new List<string> { "DELDG", "B" };
+            var tenants = this.BindResponse<List<Tenants>>(ctx);
 
             #warning If this list does not contain tenants, the 'tenant/activeTenants' endpoint will throw a null error.
             ctx.Response.Contents = stream =>
